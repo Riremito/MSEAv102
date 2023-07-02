@@ -90,7 +90,6 @@ public class LoginPacket {
          * 27: Some weird full client notice, probably for trial versions
          * 32: IP blocked
          * 84: please revisit website for pass change --> 0x07 recv with response 00/01*/
-
         mplew.writeShort(SendPacketOpcode.LOGIN_STATUS.getValue());
         mplew.write(reason);
         if (reason == 84) {
@@ -232,7 +231,7 @@ public class LoginPacket {
         return mplew.getPacket();
     }
 
-    public static final MaplePacket getCharList(final boolean secondpw, final List<MapleCharacter> chars, int charslots) {
+    public static final MaplePacket getCharList(int secondpw, final List<MapleCharacter> chars, int charslots) {
         final MaplePacketLittleEndianWriter mplew = new MaplePacketLittleEndianWriter();
 
         mplew.writeShort(SendPacketOpcode.CHARLIST.getValue());
@@ -242,7 +241,7 @@ public class LoginPacket {
         for (final MapleCharacter chr : chars) {
             addCharEntry(mplew, chr, !chr.isGM() && chr.getLevel() >= 10);
         }
-        mplew.writeShort(secondpw ? 1 : 0); // second pw request
+        mplew.writeShort(secondpw); // second pw request
         mplew.writeLong(charslots);
 
         return mplew.getPacket();
