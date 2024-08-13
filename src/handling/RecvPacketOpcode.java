@@ -39,6 +39,7 @@ public enum RecvPacketOpcode implements WritableIntValueHolder {
     DELETE_CHAR,
     STRANGE_DATA,
     CHAR_SELECT,
+    CHAR_SELECT2,
     AUTH_SECOND_PASSWORD,
     RSA_KEY(false),
     // CHANNEL

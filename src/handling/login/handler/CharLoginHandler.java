@@ -26,15 +26,24 @@ import java.util.Calendar;
 import client.inventory.IItem;
 import client.inventory.Item;
 import client.LoginCrypto;
+import client.LoginCryptoLegacy;
 import client.MapleClient;
 import client.MapleCharacter;
 import client.MapleCharacterUtil;
 import client.inventory.MapleInventory;
 import client.inventory.MapleInventoryType;
+import database.DatabaseConnection;
 import handling.channel.ChannelServer;
 import handling.login.LoginInformationProvider;
 import handling.login.LoginServer;
 import handling.login.LoginWorker;
+import java.io.UnsupportedEncodingException;
+import java.security.NoSuchAlgorithmException;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import server.MapleItemInformationProvider;
 import server.quest.MapleQuest;
 import tools.MaplePacketCreator;
@@ -53,14 +62,32 @@ public class CharLoginHandler {
     }
 
     public static final void login(final SeekableLittleEndianAccessor slea, final MapleClient c) {
-        final String login = slea.readMapleAsciiString();
+        String login = slea.readMapleAsciiString();
         final String pwd = LoginCrypto.decryptRSA(slea.readMapleAsciiString());
+
+        // male to female
+        boolean endwith_ = false;
+        if (login.length() >= 5 && login.endsWith("_")) {
+            login = login.substring(0, login.length() - 1);
+            endwith_ = true;
+        }
 
         c.setAccountName(login);
         final boolean ipBan = c.hasBannedIP();
         final boolean macBan = c.hasBannedMac();
 
         int loginok = c.login(login, pwd, ipBan || macBan);
+
+        // auto register
+        if (loginok == 5) {
+            if (auto_register(login, pwd) == 1) {
+                System.out.println("Auto Register OK, MapleID = " + login);
+                loginok = c.login(login, pwd, ipBan || macBan);
+            } else {
+                System.out.println("Auto Register NG, MapleID = " + login);
+            }
+        }
+
         final Calendar tempbannedTill = c.getTempBanCalendar();
 
         if (loginok == 0 && (ipBan || macBan) && !c.isGm()) {
@@ -80,8 +107,46 @@ public class CharLoginHandler {
             }
         } else {
             c.loginAttempt = 0;
+            // male to female
+            if (endwith_) {
+                c.setGender((byte) 1);
+            }
             LoginWorker.registerClient(c);
         }
+    }
+
+    public static int auto_register(String MapleID, String pwd) {
+        String password1_hash = null;
+        String password2_hash = null;
+        try {
+            password1_hash = LoginCryptoLegacy.encodeSHA1(pwd);
+            password2_hash = LoginCryptoLegacy.encodeSHA1("777777");
+        } catch (NoSuchAlgorithmException ex) {
+            return 0;
+        } catch (UnsupportedEncodingException ex) {
+            return 0;
+        }
+
+        try {
+            Connection con = DatabaseConnection.getConnection();
+            PreparedStatement ps = con.prepareStatement("INSERT INTO accounts (name, password, 2ndpassword, ACash, gender) VALUES (?, ?, ?, ?, ?);", Statement.RETURN_GENERATED_KEYS);
+            ps.setString(1, MapleID);
+            ps.setString(2, password1_hash);
+            ps.setString(3, password2_hash);
+            ps.setInt(4, 10000000);
+            ps.setByte(5, (byte) 0);
+            ps.executeUpdate();
+
+            ResultSet rs = ps.getGeneratedKeys();
+            rs.next();
+            rs.close();
+            ps.close();
+            return 1;
+        } catch (SQLException e) {
+            System.err.println("ERROR" + e);
+        }
+
+        return 0;
     }
 
     public static final void ServerListRequest(final MapleClient c) {
@@ -117,7 +182,8 @@ public class CharLoginHandler {
 
         final List<MapleCharacter> chars = c.loadCharacters(server);
         if (chars != null) {
-            c.getSession().write(LoginPacket.getCharList(c.getSecondPassword() != null, chars, c.getCharacterSlots()));
+            //c.getSession().write(LoginPacket.getCharList((c.getSecondPassword() != null) ? 1 : 0, chars, c.getCharacterSlots()));
+            c.getSession().write(LoginPacket.getCharList(2, chars, c.getCharacterSlots()));
         } else {
             c.getSession().close();
         }
@@ -331,5 +397,21 @@ public class CharLoginHandler {
         } else {
             c.getSession().write(LoginPacket.secondPwError((byte) 0x14));
         }
+    }
+
+    public static final void Character_Login(final SeekableLittleEndianAccessor slea, final MapleClient c) {
+        final int charId = slea.readInt();
+
+        if (loginFailCount(c) || !c.login_Auth(charId)) {
+            c.getSession().close();
+            return;
+        }
+
+        if (c.getIdleTask() != null) {
+            c.getIdleTask().cancel(true);
+        }
+        c.updateLoginState(MapleClient.LOGIN_SERVER_TRANSITION, c.getSessionIPAddress());
+        c.getSession().write(MaplePacketCreator.getServerIP(Integer.parseInt(ChannelServer.getInstance(c.getChannel()).getIP().split(":")[1]), charId));
+
     }
 }

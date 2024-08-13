@@ -22,8 +22,8 @@ package constants;
 
 public class ServerConstants {
 
-    public static final byte[] Gateway_IP = {(byte) 0xCB, (byte) 0x74, (byte) 0xC4, (byte) 0x08}; //singapore
-    public static final String Gateway_IP_String = "203.116.196.8"; //singapore
+    public static final byte[] Gateway_IP = {(byte) 0x7F, (byte) 0x00, (byte) 0x00, (byte) 0x01}; //singapore
+    public static final String Gateway_IP_String = "127.0.0.1"; //singapore
     //public static final String Gateway_IP_String = "203.188.239.82"; //malaysia
 
     /*
